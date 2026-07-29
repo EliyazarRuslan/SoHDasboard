@@ -1,0 +1,14 @@
+{
+  "name": "gbe-soh-dashboard",
+  "version": "1.0.0",
+  "private": true,
+  "description": "HAPL & MV SoH Usage Report — static dashboard with Maximo data refresh",
+  "scripts": {
+    "refresh": "node refresh_data.js",
+    "publish": "./refresh.sh"
+  },
+  "dependencies": {
+    "dotenv": "^16.4.5",
+    "mssql": "^10.0.2"
+  }
+}

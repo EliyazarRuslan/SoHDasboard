@@ -1,0 +1,410 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HAPL &amp; MV SoH Usage Report</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+<script src="data/soh_data.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  color-scheme: dark;
+  --bg-primary: #0a0e1a;
+  --surface-1: #111827;
+  --bg-card: rgba(17, 24, 39, 0.7);
+  --border-card: rgba(255, 255, 255, 0.06);
+  --text-primary: #f1f5f9;
+  --text-secondary: #94a3b8;
+  --text-muted: #64748b;
+  --series-1: #3987e5;  /* HAPL */
+  --series-2: #d95926;  /* MV */
+  --good: #10b981;
+  --warning: #f59e0b;
+  --critical: #ef4444;
+  --blue-glow: rgba(57, 135, 229, 0.15);
+}
+body {
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
+  min-height: 100vh;
+  overflow-x: hidden;
+}
+body::before {
+  content: '';
+  position: fixed; top: -50%; left: -50%; width: 200%; height: 200%;
+  background: radial-gradient(ellipse at 20% 50%, rgba(57, 135, 229, 0.04) 0%, transparent 50%),
+              radial-gradient(ellipse at 80% 20%, rgba(16, 185, 129, 0.03) 0%, transparent 50%);
+  z-index: 0; pointer-events: none;
+}
+.dashboard { position: relative; z-index: 1; max-width: 1560px; margin: 0 auto; padding: 24px 32px 48px; }
+
+.header { display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 16px; margin-bottom: 28px; padding-bottom: 22px; border-bottom: 1px solid var(--border-card); }
+.header-left { display: flex; align-items: center; gap: 16px; }
+.header-logo {
+  width: 44px; height: 44px; border-radius: 12px;
+  background: linear-gradient(135deg, var(--series-1), var(--good));
+  display: flex; align-items: center; justify-content: center;
+  font-weight: 800; font-size: 15px; color: #fff;
+  box-shadow: 0 4px 20px var(--blue-glow);
+}
+.header-title { font-size: 22px; font-weight: 700; letter-spacing: -0.5px; }
+.header-subtitle { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+.btn-export {
+  display: inline-flex; align-items: center; gap: 8px;
+  background: linear-gradient(135deg, #0d9668, #10b981);
+  color: #fff; border: none; border-radius: 10px;
+  font: 600 14px 'Inter', sans-serif; padding: 11px 20px; cursor: pointer;
+  box-shadow: 0 4px 18px rgba(16, 185, 129, 0.25);
+  transition: transform 120ms ease, box-shadow 120ms ease;
+}
+.btn-export:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(16, 185, 129, 0.4); }
+.btn-export:active { transform: translateY(0); }
+.btn-export:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+
+.filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 24px; }
+.filters label { font-size: 12px; color: var(--text-secondary); font-weight: 600; display: flex; flex-direction: column; gap: 5px; }
+.filters select, .filters input[type="search"] {
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border-card); border-radius: 8px;
+  font: 400 13px 'Inter', sans-serif; padding: 8px 10px; min-width: 150px;
+}
+.filters input[type="search"] { min-width: 230px; }
+.filters select:focus, .filters input:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.toggle { display: flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 13px; color: var(--text-secondary); cursor: pointer; user-select: none; }
+.toggle input { accent-color: var(--series-1); width: 15px; height: 15px; cursor: pointer; }
+
+.kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 14px; margin-bottom: 24px; }
+.kpi {
+  background: var(--bg-card); border: 1px solid var(--border-card);
+  border-radius: 14px; padding: 18px 20px;
+}
+.kpi .k-label { font-size: 12px; font-weight: 600; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.6px; }
+.kpi .k-value { font-size: 30px; font-weight: 800; letter-spacing: -1px; margin-top: 6px; font-variant-numeric: tabular-nums; }
+.kpi .k-sub { font-size: 12px; color: var(--text-secondary); margin-top: 4px; }
+
+.panel {
+  background: var(--bg-card); border: 1px solid var(--border-card);
+  border-radius: 14px; padding: 20px; margin-bottom: 24px;
+}
+.panel h2 { font-size: 15px; font-weight: 700; margin-bottom: 4px; }
+.panel .p-sub { font-size: 12px; color: var(--text-muted); margin-bottom: 14px; }
+.chart-wrap { position: relative; height: 340px; }
+
+.legend { display: flex; gap: 18px; margin-bottom: 10px; font-size: 12px; color: var(--text-secondary); }
+.legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
+
+.table-scroll { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border-card); }
+table { border-collapse: collapse; width: 100%; min-width: 1480px; font-size: 12.5px; }
+thead th {
+  position: sticky; top: 0; background: #0e1424; color: var(--text-secondary);
+  font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
+  text-align: left; padding: 11px 12px; border-bottom: 1px solid var(--border-card);
+  cursor: pointer; white-space: nowrap; user-select: none;
+}
+thead th .arrow { color: var(--series-1); font-size: 10px; }
+tbody td { padding: 9px 12px; border-bottom: 1px solid rgba(255,255,255,0.04); white-space: nowrap; font-variant-numeric: tabular-nums; }
+tbody tr:hover { background: rgba(57, 135, 229, 0.06); }
+td.desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.site-tag { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 6px; }
+.site-HAPL { color: var(--series-1); background: rgba(57,135,229,0.12); }
+.site-MV { color: #f0824f; background: rgba(217,89,38,0.14); }
+.soh-pill { font-weight: 700; padding: 2px 9px; border-radius: 999px; font-size: 12px; }
+.soh-good { color: var(--good); background: rgba(16,185,129,0.12); }
+.soh-warn { color: var(--warning); background: rgba(245,158,11,0.12); }
+.soh-crit { color: var(--critical); background: rgba(239,68,68,0.13); }
+.dim { color: var(--text-muted); }
+.tfoot-note { font-size: 12px; color: var(--text-muted); padding: 12px 4px; }
+.count-note { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px 2px; }
+@media (max-width: 768px) { .dashboard { padding: 16px; } .header { flex-direction: column; align-items: flex-start; } }
+</style>
+</head>
+<body>
+<div class="dashboard">
+  <header class="header">
+    <div class="header-left">
+      <div class="header-logo">SoH</div>
+      <div>
+        <h1 class="header-title">HAPL &amp; MV SoH Usage Report</h1>
+        <div class="header-subtitle">EV battery State of Health — recorded at workshop work orders (Maximo WORKORDER, sites HAPL &amp; MV)<span id="dataAsOf"></span></div>
+      </div>
+    </div>
+    <button class="btn-export" id="btnExport" type="button">&#8681;&nbsp; Export to Excel</button>
+  </header>
+
+  <div class="filters">
+    <label>Site
+      <select id="fSite"><option value="">All sites</option><option>HAPL</option><option>MV</option></select>
+    </label>
+    <label>Work type
+      <select id="fType"><option value="">All types</option></select>
+    </label>
+    <label>Owner
+      <select id="fOwner"><option value="">All owners</option></select>
+    </label>
+    <label>Search
+      <input type="search" id="fSearch" placeholder="Vehicle no, owner, WO number…">
+    </label>
+    <label class="toggle" style="flex-direction:row">
+      <input type="checkbox" id="fLatest" checked> Latest reading per vehicle
+    </label>
+  </div>
+
+  <div class="kpis" id="kpis"></div>
+
+  <section class="panel">
+    <h2>Recorded SoH vs Mileage</h2>
+    <div class="p-sub">Each point is one work-order SoH reading. Dashed line marks the 70% warranty threshold; 160k / 200k km warranty limits shown vertically.</div>
+    <div class="legend">
+      <span><span class="sw" style="background:var(--series-1)"></span>HAPL</span>
+      <span><span class="sw" style="background:var(--series-2)"></span>MV</span>
+    </div>
+    <div class="chart-wrap"><canvas id="scatter"></canvas></div>
+  </section>
+
+  <section class="panel">
+    <h2>SoH Usage Detail</h2>
+    <div class="p-sub">Degradation assumes 100% SoH at registration. Predictions are linear extrapolations from each reading; capped to 0–100%.</div>
+    <div class="count-note" id="countNote"></div>
+    <div class="table-scroll">
+      <table id="tbl">
+        <thead><tr id="theadRow"></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+    </div>
+    <div class="tfoot-note">Deg/10,000 km = (100 − SoH) ÷ (mileage ÷ 10,000) &nbsp;·&nbsp; Deg/year = (100 − SoH) ÷ years since registration &nbsp;·&nbsp; Readings above 100% show as no degradation. “–” = registration date or mileage unavailable.</div>
+  </section>
+</div>
+
+<script>
+'use strict';
+const RAW = (window.SOH_DATA || []);
+
+/* ---------- derive computed fields ---------- */
+function enrich(r) {
+  const soh = (typeof r.soh === 'number' && isFinite(r.soh)) ? r.soh : null;
+  const km = (typeof r.mileage === 'number' && isFinite(r.mileage) && r.mileage > 0) ? r.mileage : null;
+  const d = r.date ? new Date(r.date) : null;
+  const reg = r.regdate ? new Date(r.regdate) : null;
+  const years = (d && reg && d > reg) ? (d - reg) / 31557600000 : null;
+  const loss = soh == null ? null : Math.max(0, 100 - soh);
+  const degKm = (loss != null && km) ? loss / (km / 10000) : null;
+  const degYr = (loss != null && years != null && years > 0.05) ? loss / years : null;
+  const cap = v => v == null ? null : Math.min(100, Math.max(0, v));
+  return Object.assign({}, r, {
+    soh, km, dateObj: d, regObj: reg, years,
+    degKm, degYr,
+    p8y:  degYr == null ? null : cap(100 - degYr * 8),
+    p10y: degYr == null ? null : cap(100 - degYr * 10),
+    p160: degKm == null ? null : cap(100 - degKm * 16),
+    p200: degKm == null ? null : cap(100 - degKm * 20)
+  });
+}
+const DATA = RAW.map(enrich).filter(r => r.soh != null && r.soh >= 20 && r.soh <= 120);
+
+/* ---------- filter state ---------- */
+const els = {
+  site: document.getElementById('fSite'), type: document.getElementById('fType'),
+  owner: document.getElementById('fOwner'), search: document.getElementById('fSearch'),
+  latest: document.getElementById('fLatest')
+};
+function fillSelect(sel, values) {
+  values.forEach(v => { const o = document.createElement('option'); o.textContent = v; sel.appendChild(o); });
+}
+fillSelect(els.type, [...new Set(DATA.map(r => r.worktype).filter(Boolean))].sort());
+fillSelect(els.owner, [...new Set(DATA.map(r => r.owner).filter(Boolean))].sort());
+
+let sortKey = 'dateObj', sortDir = -1;
+
+function currentRows() {
+  const q = els.search.value.trim().toUpperCase();
+  let rows = DATA.filter(r =>
+    (!els.site.value || r.site === els.site.value) &&
+    (!els.type.value || r.worktype === els.type.value) &&
+    (!els.owner.value || r.owner === els.owner.value) &&
+    (!q || [r.vehicle, r.owner, r.wonum, r.assetnum, r.model].some(v => v && String(v).toUpperCase().includes(q)))
+  );
+  if (els.latest.checked) rows = latestPerVehicle(rows);
+  rows.sort((a, b) => {
+    const va = a[sortKey], vb = b[sortKey];
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    return (va < vb ? -1 : va > vb ? 1 : 0) * sortDir;
+  });
+  return rows;
+}
+
+/* ---------- formatting ---------- */
+const esc = s => s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const latestPerVehicle = rows => {
+  const best = new Map();
+  rows.forEach(r => {
+    const k = r.site + '|' + (r.vehicle || r.assetnum);
+    const cur = best.get(k);
+    if (!cur || (r.dateObj && cur.dateObj && r.dateObj > cur.dateObj) || (!cur.dateObj && r.dateObj)) best.set(k, r);
+  });
+  return [...best.values()];
+};
+const fmtNum = (v, d = 2) => v == null ? '–' : v.toLocaleString('en-SG', { minimumFractionDigits: d, maximumFractionDigits: d });
+const fmtInt = v => v == null ? '–' : Math.round(v).toLocaleString('en-SG');
+const fmtDate = d => d ? d.toISOString().slice(0, 10) : '–';
+const sohClass = v => v == null ? '' : v >= 90 ? 'soh-good' : v >= 75 ? 'soh-warn' : 'soh-crit';
+
+/* ---------- KPIs ---------- */
+function renderKpis(rows) {
+  const veh = latestPerVehicle(rows);
+  const avg = (arr, f) => { const v = arr.map(f).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null; };
+  const atRisk8y = veh.filter(r => r.p8y != null && r.p8y < 70).length;
+  const atRisk160 = veh.filter(r => r.p160 != null && r.p160 < 70).length;
+  const kpis = [
+    ['Vehicles', fmtInt(veh.length), 'with SoH readings (filtered)'],
+    ['Readings', fmtInt(rows.length), 'work orders with recorded SoH'],
+    ['Avg latest SoH', fmtNum(avg(veh, r => r.soh), 1) + '%', 'per-vehicle latest reading'],
+    ['Avg deg / 10,000 km', fmtNum(avg(veh, r => r.degKm), 2) + ' pts', 'assuming 100% at registration'],
+    ['Avg deg / year', fmtNum(avg(veh, r => r.degYr), 2) + ' pts', 'per year in service'],
+    ['Below 70% @ 8 yr', fmtInt(atRisk8y), `vehicles · ${fmtInt(atRisk160)} below 70% @ 160k km`]
+  ];
+  document.getElementById('kpis').innerHTML = kpis.map(([l, v, s]) =>
+    `<div class="kpi"><div class="k-label">${l}</div><div class="k-value">${v}</div><div class="k-sub">${s}</div></div>`).join('');
+}
+
+/* ---------- table ---------- */
+const COLS = [
+  ['site', 'Site'], ['vehicle', 'Vehicle No'], ['owner', 'Owner'], ['regObj', 'Reg. Date'],
+  ['description', 'Service'], ['worktype', 'Type'], ['km', 'Mileage (km)'], ['dateObj', 'Date'],
+  ['soh', 'SoH (%)'], ['degKm', 'Deg /10k km'], ['degYr', 'Deg /yr'],
+  ['p8y', 'Pred @ 8 yr'], ['p160', 'Pred @ 160k'], ['p10y', 'Pred @ 10 yr'], ['p200', 'Pred @ 200k'],
+  ['wonum', 'WO No']
+];
+function renderHead() {
+  document.getElementById('theadRow').innerHTML = COLS.map(([k, l]) =>
+    `<th data-k="${k}">${l} ${sortKey === k ? `<span class="arrow">${sortDir > 0 ? '▲' : '▼'}</span>` : ''}</th>`).join('');
+  document.querySelectorAll('#theadRow th').forEach(th => th.onclick = () => {
+    const k = th.dataset.k;
+    if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k === 'dateObj' || k === 'soh' ? -1 : 1; }
+    render();
+  });
+}
+function renderTable(rows) {
+  document.getElementById('countNote').textContent =
+    `${rows.length.toLocaleString()} row${rows.length === 1 ? '' : 's'}` + (els.latest.checked ? ' — latest reading per vehicle' : ' — all readings');
+  document.getElementById('tbody').innerHTML = rows.map(r => `<tr>
+    <td><span class="site-tag ${r.site === 'HAPL' ? 'site-HAPL' : r.site === 'MV' ? 'site-MV' : ''}">${esc(r.site)}</span></td>
+    <td><strong>${esc(r.vehicle) || esc(r.assetnum)}</strong></td>
+    <td>${esc(r.owner) || '<span class="dim">–</span>'}</td>
+    <td>${fmtDate(r.regObj)}</td>
+    <td class="desc" title="${esc(r.description)}">${esc(r.description)}</td>
+    <td>${esc(r.worktype)}</td>
+    <td>${fmtInt(r.km)}</td>
+    <td>${fmtDate(r.dateObj)}</td>
+    <td><span class="soh-pill ${sohClass(r.soh)}">${fmtNum(r.soh, 1)}</span></td>
+    <td>${fmtNum(r.degKm)}</td>
+    <td>${fmtNum(r.degYr)}</td>
+    <td class="${sohClass(r.p8y)}">${fmtNum(r.p8y, 1)}</td>
+    <td class="${sohClass(r.p160)}">${fmtNum(r.p160, 1)}</td>
+    <td class="${sohClass(r.p10y)}">${fmtNum(r.p10y, 1)}</td>
+    <td class="${sohClass(r.p200)}">${fmtNum(r.p200, 1)}</td>
+    <td class="dim">${esc(r.wonum)}</td>
+  </tr>`).join('');
+}
+
+/* ---------- chart ---------- */
+let chart;
+function renderChart(rows) {
+  const mk = site => rows.filter(r => r.site === site && r.km != null).map(r => ({ x: r.km, y: r.soh, r_: r }));
+  const cfg = {
+    type: 'scatter',
+    data: { datasets: [
+      { label: 'HAPL', data: mk('HAPL'), backgroundColor: 'rgba(57,135,229,0.75)', pointRadius: 4, pointHoverRadius: 7, borderColor: '#0a0e1a', borderWidth: 1 },
+      { label: 'MV', data: mk('MV'), backgroundColor: 'rgba(217,89,38,0.75)', pointRadius: 4, pointHoverRadius: 7, borderColor: '#0a0e1a', borderWidth: 1 }
+    ]},
+    options: {
+      responsive: true, maintainAspectRatio: false, animation: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          backgroundColor: '#0e1424', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
+          titleFont: { family: 'Inter', weight: '600' }, bodyFont: { family: 'Inter' }, padding: 10,
+          callbacks: {
+            title: items => { const r = items[0].raw.r_; return `${r.vehicle || r.assetnum} · ${r.site}`; },
+            label: item => { const r = item.raw.r_; return [`SoH ${fmtNum(r.soh, 1)}% @ ${fmtInt(r.km)} km`, `${fmtDate(r.dateObj)} · ${r.owner || ''}`]; }
+          }
+        }
+      },
+      scales: {
+        x: { title: { display: true, text: 'Mileage (km)', color: '#94a3b8', font: { family: 'Inter', size: 11 } },
+             grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { family: 'Inter', size: 11 }, callback: v => (v / 1000) + 'k' } },
+        y: { title: { display: true, text: 'Recorded SoH (%)', color: '#94a3b8', font: { family: 'Inter', size: 11 } },
+             grid: { color: 'rgba(255,255,255,0.05)' }, ticks: { color: '#64748b', font: { family: 'Inter', size: 11 } }, suggestedMin: 60, suggestedMax: 105 }
+      }
+    },
+    plugins: [{
+      id: 'refLines',
+      afterDraw(c) {
+        const { ctx, chartArea: a, scales: { x, y } } = c;
+        ctx.save(); ctx.setLineDash([5, 5]); ctx.lineWidth = 1;
+        const y70 = y.getPixelForValue(70);
+        if (y70 > a.top && y70 < a.bottom) {
+          ctx.strokeStyle = 'rgba(239,68,68,0.5)';
+          ctx.beginPath(); ctx.moveTo(a.left, y70); ctx.lineTo(a.right, y70); ctx.stroke();
+          ctx.fillStyle = 'rgba(239,68,68,0.8)'; ctx.font = '600 10px Inter'; ctx.fillText('70% threshold', a.left + 6, y70 - 5);
+        }
+        [[160000, '160k warranty'], [200000, '200k ext.']].forEach(([km, lbl]) => {
+          const px = x.getPixelForValue(km);
+          if (px > a.left && px < a.right) {
+            ctx.strokeStyle = 'rgba(148,163,184,0.4)';
+            ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+            ctx.fillStyle = 'rgba(148,163,184,0.8)'; ctx.font = '600 10px Inter'; ctx.fillText(lbl, px + 5, a.top + 12);
+          }
+        });
+        ctx.restore();
+      }
+    }]
+  };
+  if (chart) { chart.data = cfg.data; chart.update(); } else { chart = new Chart(document.getElementById('scatter'), cfg); }
+}
+
+/* ---------- export ---------- */
+document.getElementById('btnExport').onclick = () => {
+  const rows = currentRows();
+  if (!rows.length) { alert('No rows match the current filters — nothing to export.'); return; }
+  const sheet = rows.map(r => ({
+    'Site': r.site, 'Vehicle No': r.vehicle || r.assetnum, 'Owner': r.owner || '',
+    'Registration Date': r.regObj ? fmtDate(r.regObj) : '', 'Service': r.description || '', 'Work Type': r.worktype || '',
+    'Mileage (km)': r.km, 'Date': r.dateObj ? fmtDate(r.dateObj) : '', 'Recorded SoH (%)': r.soh,
+    'SoH Deg per 10,000km': r.degKm == null ? '' : +r.degKm.toFixed(3),
+    'SoH Deg per Year': r.degYr == null ? '' : +r.degYr.toFixed(3),
+    'Predicted SoH @ 8 Years (Warranty End)': r.p8y == null ? '' : +r.p8y.toFixed(1),
+    'Predicted SoH @ 160,000km (Warranty End)': r.p160 == null ? '' : +r.p160.toFixed(1),
+    'Predicted SoH @ 10 Years (Ext. Warranty End)': r.p10y == null ? '' : +r.p10y.toFixed(1),
+    'Predicted SoH @ 200,000km (Ext. Warranty End)': r.p200 == null ? '' : +r.p200.toFixed(1),
+    'WO Number': r.wonum, 'Status': r.status || '', 'Vehicle Model': r.model || ''
+  }));
+  const ws = XLSX.utils.json_to_sheet(sheet);
+  ws['!cols'] = Object.keys(sheet[0] || { a: 1 }).map(k => ({ wch: Math.min(42, Math.max(12, k.length + 2)) }));
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, 'SoH Usage Report');
+  XLSX.writeFile(wb, `HAPL_MV_SoH_Usage_Report_${new Date().toISOString().slice(0, 10)}.xlsx`);
+};
+
+/* ---------- wire up ---------- */
+function render() {
+  const rows = currentRows();
+  renderKpis(rows);
+  renderHead();
+  renderTable(rows);
+  renderChart(rows);
+}
+if (window.SOH_GENERATED) {
+  document.getElementById('dataAsOf').textContent = ' · data as of ' + new Date(window.SOH_GENERATED).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' });
+}
+[els.site, els.type, els.owner, els.latest].forEach(el => el.addEventListener('change', render));
+els.search.addEventListener('input', () => { clearTimeout(els.search._t); els.search._t = setTimeout(render, 200); });
+render();
+</script>
+</body>
+</html>
