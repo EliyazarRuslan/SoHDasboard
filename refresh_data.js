@@ -33,7 +33,7 @@ const config = {
 
 const QUERY = `
 SELECT w.wonum, w.siteid AS site, w.assetnum, w.gb_assetregistrationno AS vehicle,
-c.name AS owner, a.installdate AS regdate, a.gb_vehiclemodel AS model, w.worktype, w.description,
+c.name AS owner, a.installdate AS regdate, a.gb_vehiclemodel AS model, a.gb_mxgroupcode AS mgcode, w.worktype, w.description,
 TRY_CAST(REPLACE(NULLIF(LTRIM(RTRIM(w.gb_mileagereading)),''),',','') AS FLOAT) AS mileage,
 w.reportdate AS date, w.status,
 TRY_CAST(NULLIF(REPLACE(LTRIM(RTRIM(w.gb_soh)),'%',''),'') AS FLOAT) AS soh
@@ -56,6 +56,7 @@ function cleanRow(r) {
     owner: r.owner,
     regdate: r.regdate ? new Date(r.regdate).toISOString() : null,
     model: r.model,
+    mgcode: r.mgcode,
     worktype: r.worktype,
     description: r.description ? String(r.description).replace(/\s*[\r\n]+\s*/g, ' | ').trim() : null,
     mileage: typeof r.mileage === 'number' && isFinite(r.mileage) ? r.mileage : null,

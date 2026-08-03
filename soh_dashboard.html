@@ -145,6 +145,9 @@ td.desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-spa
     <label>Owner
       <select id="fOwner"><option value="">All owners</option></select>
     </label>
+    <label>MG Code
+      <select id="fMg"><option value="">All MG codes</option></select>
+    </label>
     <label>Search
       <input type="search" id="fSearch" placeholder="Vehicle no, owner, WO number…">
     </label>
@@ -208,7 +211,7 @@ const DATA = RAW.map(enrich).filter(r => r.soh != null && r.soh >= 20 && r.soh <
 /* ---------- filter state ---------- */
 const els = {
   site: document.getElementById('fSite'), type: document.getElementById('fType'),
-  owner: document.getElementById('fOwner'), search: document.getElementById('fSearch'),
+  owner: document.getElementById('fOwner'), mg: document.getElementById('fMg'), search: document.getElementById('fSearch'),
   latest: document.getElementById('fLatest')
 };
 function fillSelect(sel, values) {
@@ -216,6 +219,7 @@ function fillSelect(sel, values) {
 }
 fillSelect(els.type, [...new Set(DATA.map(r => r.worktype).filter(Boolean))].sort());
 fillSelect(els.owner, [...new Set(DATA.map(r => r.owner).filter(Boolean))].sort());
+fillSelect(els.mg, [...new Set(DATA.map(r => r.mgcode).filter(Boolean))].sort());
 
 let sortKey = 'dateObj', sortDir = -1;
 
@@ -225,7 +229,8 @@ function currentRows() {
     (!els.site.value || r.site === els.site.value) &&
     (!els.type.value || r.worktype === els.type.value) &&
     (!els.owner.value || r.owner === els.owner.value) &&
-    (!q || [r.vehicle, r.owner, r.wonum, r.assetnum, r.model].some(v => v && String(v).toUpperCase().includes(q)))
+    (!els.mg.value || r.mgcode === els.mg.value) &&
+    (!q || [r.vehicle, r.owner, r.wonum, r.assetnum, r.model, r.mgcode].some(v => v && String(v).toUpperCase().includes(q)))
   );
   if (els.latest.checked) rows = latestPerVehicle(rows);
   rows.sort((a, b) => {
@@ -274,7 +279,7 @@ function renderKpis(rows) {
 
 /* ---------- table ---------- */
 const COLS = [
-  ['site', 'Site'], ['vehicle', 'Vehicle No'], ['owner', 'Owner'], ['regObj', 'Reg. Date'],
+  ['site', 'Site'], ['vehicle', 'Vehicle No'], ['mgcode', 'MG Code'], ['owner', 'Owner'], ['regObj', 'Reg. Date'],
   ['description', 'Service'], ['worktype', 'Type'], ['km', 'Mileage (km)'], ['dateObj', 'Date'],
   ['soh', 'SoH (%)'], ['degKm', 'Deg /10k km'], ['degYr', 'Deg /yr'],
   ['p8y', 'Pred @ 8 yr'], ['p160', 'Pred @ 160k'], ['p10y', 'Pred @ 10 yr'], ['p200', 'Pred @ 200k'],
@@ -295,6 +300,7 @@ function renderTable(rows) {
   document.getElementById('tbody').innerHTML = rows.map(r => `<tr>
     <td><span class="site-tag ${r.site === 'HAPL' ? 'site-HAPL' : r.site === 'MV' ? 'site-MV' : ''}">${esc(r.site)}</span></td>
     <td><strong>${esc(r.vehicle) || esc(r.assetnum)}</strong></td>
+    <td>${esc(r.mgcode) || '<span class="dim">–</span>'}</td>
     <td>${esc(r.owner) || '<span class="dim">–</span>'}</td>
     <td>${fmtDate(r.regObj)}</td>
     <td class="desc" title="${esc(r.description)}">${esc(r.description)}</td>
@@ -373,7 +379,7 @@ document.getElementById('btnExport').onclick = () => {
   const rows = currentRows();
   if (!rows.length) { alert('No rows match the current filters — nothing to export.'); return; }
   const sheet = rows.map(r => ({
-    'Site': r.site, 'Vehicle No': r.vehicle || r.assetnum, 'Owner': r.owner || '',
+    'Site': r.site, 'Vehicle No': r.vehicle || r.assetnum, 'MG Code': r.mgcode || '', 'Owner': r.owner || '',
     'Registration Date': r.regObj ? fmtDate(r.regObj) : '', 'Service': r.description || '', 'Work Type': r.worktype || '',
     'Mileage (km)': r.km, 'Date': r.dateObj ? fmtDate(r.dateObj) : '', 'Recorded SoH (%)': r.soh,
     'SoH Deg per 10,000km': r.degKm == null ? '' : +r.degKm.toFixed(3),
@@ -402,7 +408,7 @@ function render() {
 if (window.SOH_GENERATED) {
   document.getElementById('dataAsOf').textContent = ' · data as of ' + new Date(window.SOH_GENERATED).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' });
 }
-[els.site, els.type, els.owner, els.latest].forEach(el => el.addEventListener('change', render));
+[els.site, els.type, els.owner, els.mg, els.latest].forEach(el => el.addEventListener('change', render));
 els.search.addEventListener('input', () => { clearTimeout(els.search._t); els.search._t = setTimeout(render, 200); });
 render();
 </script>
