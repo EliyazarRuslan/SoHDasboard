@@ -66,7 +66,7 @@ body::before {
 .btn-export:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
 
 .filters { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; margin-bottom: 24px; }
-.filters label { font-size: 12px; color: var(--text-secondary); font-weight: 600; display: flex; flex-direction: column; gap: 5px; }
+.filters label, .filters .filter-group { font-size: 12px; color: var(--text-secondary); font-weight: 600; display: flex; flex-direction: column; gap: 5px; }
 .filters select, .filters input[type="search"] {
   background: var(--surface-1); color: var(--text-primary);
   border: 1px solid var(--border-card); border-radius: 8px;
@@ -175,7 +175,7 @@ td.desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-spa
     <label>Owner
       <select id="fOwner"><option value="">All owners</option></select>
     </label>
-    <label>MG Code
+    <div class="filter-group">MG Code
       <div class="msel" id="fMgWrap">
         <button type="button" class="msel-btn" id="fMgBtn">All MG codes <span class="msel-caret">▾</span></button>
         <div class="msel-panel" id="fMgPanel" hidden>
@@ -186,7 +186,7 @@ td.desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-spa
           <div class="msel-list" id="fMgList"></div>
         </div>
       </div>
-    </label>
+    </div>
     <label>Search
       <input type="search" id="fSearch" placeholder="Vehicle no, owner, WO number…">
     </label>
