@@ -128,7 +128,7 @@ body::before {
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 
 .table-scroll { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border-card); }
-table { border-collapse: collapse; width: 100%; min-width: 1560px; font-size: 12.5px; }
+table { border-collapse: collapse; width: 100%; min-width: 1180px; font-size: 12.5px; }
 thead th {
   position: sticky; top: 0; background: #0e1424; color: var(--text-secondary);
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
@@ -147,6 +147,16 @@ td.desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-spa
 .soh-warn { color: var(--warning); background: rgba(245,158,11,0.12); }
 .soh-crit { color: var(--critical); background: rgba(239,68,68,0.13); }
 .dim { color: var(--text-muted); }
+.pager { display: flex; gap: 6px; align-items: center; justify-content: center; margin-top: 14px; flex-wrap: wrap; }
+.pager button {
+  background: var(--surface-1); color: var(--text-secondary);
+  border: 1px solid var(--border-card); border-radius: 8px;
+  font: 600 12px 'Inter', sans-serif; padding: 7px 12px; cursor: pointer; min-width: 34px;
+}
+.pager button:hover:not(:disabled) { color: var(--text-primary); border-color: var(--series-1); }
+.pager button.cur { background: var(--series-1); color: #fff; border-color: var(--series-1); }
+.pager button:disabled { opacity: 0.35; cursor: default; }
+.pager .ellip { color: var(--text-muted); padding: 0 2px; }
 .tfoot-note { font-size: 12px; color: var(--text-muted); padding: 12px 4px; }
 .count-note { font-size: 12px; color: var(--text-secondary); margin: 0 0 10px 2px; }
 @media (max-width: 768px) { .dashboard { padding: 16px; } .header { flex-direction: column; align-items: flex-start; } }
@@ -217,6 +227,7 @@ td.desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-spa
         <tbody id="tbody"></tbody>
       </table>
     </div>
+    <div class="pager" id="pager"></div>
     <div class="tfoot-note">Deg/10,000 km = (100 − SoH) ÷ (mileage ÷ 10,000) &nbsp;·&nbsp; Deg/year = (100 − SoH) ÷ years since registration &nbsp;·&nbsp; Readings above 100% show as no degradation. “–” = registration date or mileage unavailable.</div>
   </section>
 </div>
@@ -276,6 +287,7 @@ function mgLabel() {
 }
 function mgUpdate() {
   mgBtn.firstChild.textContent = mgLabel() + ' ';
+  page = 1;
   render();
 }
 mgBtn.addEventListener('click', () => { mgPanel.hidden = !mgPanel.hidden; });
@@ -356,30 +368,36 @@ function renderKpis(rows) {
 /* ---------- table ---------- */
 const COLS = [
   ['site', 'Site'], ['vehicle', 'Vehicle No'], ['mgcode', 'MG Code'], ['owner', 'Owner'], ['regObj', 'Reg. Date'],
-  ['description', 'Service'], ['worktype', 'Type'], ['km', 'Mileage (km)'], ['dateObj', 'Date'],
+  ['worktype', 'Type'], ['km', 'Mileage (km)'], ['dateObj', 'Date'],
   ['soh', 'SoH (%)'], ['degKm', 'Deg /10k km'], ['degYr', 'Deg /yr'],
-  ['p8y', 'Pred @ 8 yr'], ['p160', 'Pred @ 160k'], ['p10y', 'Pred @ 10 yr'], ['p200', 'Pred @ 200k'], ['p400', 'Pred @ 400k'],
-  ['wonum', 'WO No']
+  ['p8y', 'Pred @ 8 yr'], ['p160', 'Pred @ 160k'], ['p10y', 'Pred @ 10 yr'], ['p200', 'Pred @ 200k'], ['p400', 'Pred @ 400k']
 ];
+const PAGE_SIZE = 20;
+let page = 1;
 function renderHead() {
   document.getElementById('theadRow').innerHTML = COLS.map(([k, l]) =>
     `<th data-k="${k}">${l} ${sortKey === k ? `<span class="arrow">${sortDir > 0 ? '▲' : '▼'}</span>` : ''}</th>`).join('');
   document.querySelectorAll('#theadRow th').forEach(th => th.onclick = () => {
     const k = th.dataset.k;
     if (sortKey === k) sortDir *= -1; else { sortKey = k; sortDir = k === 'dateObj' || k === 'soh' ? -1 : 1; }
+    page = 1;
     render();
   });
 }
 function renderTable(rows) {
+  const pages = Math.max(1, Math.ceil(rows.length / PAGE_SIZE));
+  if (page > pages) page = pages;
+  const start = (page - 1) * PAGE_SIZE;
+  const slice = rows.slice(start, start + PAGE_SIZE);
   document.getElementById('countNote').textContent =
+    (rows.length ? `Showing ${(start + 1).toLocaleString()}–${(start + slice.length).toLocaleString()} of ` : '') +
     `${rows.length.toLocaleString()} row${rows.length === 1 ? '' : 's'}` + (els.latest.checked ? ' — latest reading per vehicle' : ' — all readings');
-  document.getElementById('tbody').innerHTML = rows.map(r => `<tr>
+  document.getElementById('tbody').innerHTML = slice.map(r => `<tr>
     <td><span class="site-tag ${r.site === 'HAPL' ? 'site-HAPL' : r.site === 'MV' ? 'site-MV' : ''}">${esc(r.site)}</span></td>
     <td><strong>${esc(r.vehicle) || esc(r.assetnum)}</strong></td>
     <td>${esc(r.mgcode) || '<span class="dim">–</span>'}</td>
     <td>${esc(r.owner) || '<span class="dim">–</span>'}</td>
     <td>${fmtDate(r.regObj)}</td>
-    <td class="desc" title="${esc(r.description)}">${esc(r.description)}</td>
     <td>${esc(r.worktype)}</td>
     <td>${fmtInt(r.km)}</td>
     <td>${fmtDate(r.dateObj)}</td>
@@ -391,8 +409,26 @@ function renderTable(rows) {
     <td class="${sohClass(r.p10y)}">${fmtNum(r.p10y, 1)}</td>
     <td class="${sohClass(r.p200)}">${fmtNum(r.p200, 1)}</td>
     <td class="${sohClass(r.p400)}">${fmtNum(r.p400, 1)}</td>
-    <td class="dim">${esc(r.wonum)}</td>
   </tr>`).join('');
+  renderPager(pages);
+}
+function renderPager(pages) {
+  const el = document.getElementById('pager');
+  if (pages <= 1) { el.innerHTML = ''; return; }
+  const btn = (p, label, dis, cur) =>
+    `<button type="button" data-p="${p}" ${dis ? 'disabled' : ''} class="${cur ? 'cur' : ''}">${label}</button>`;
+  const nums = [];
+  const win = 2;
+  let last = 0;
+  for (let p = 1; p <= pages; p++) {
+    if (p === 1 || p === pages || Math.abs(p - page) <= win) {
+      if (last && p - last > 1) nums.push('<span class="ellip">…</span>');
+      nums.push(btn(p, p, false, p === page));
+      last = p;
+    }
+  }
+  el.innerHTML = btn(page - 1, '‹ Prev', page === 1, false) + nums.join('') + btn(page + 1, 'Next ›', page === pages, false);
+  el.querySelectorAll('button[data-p]').forEach(b => b.onclick = () => { page = +b.dataset.p; render(); });
 }
 
 /* ---------- chart ---------- */
@@ -486,8 +522,8 @@ function render() {
 if (window.SOH_GENERATED) {
   document.getElementById('dataAsOf').textContent = ' · data as of ' + new Date(window.SOH_GENERATED).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' });
 }
-[els.site, els.type, els.owner, els.latest].forEach(el => el.addEventListener('change', render));
-els.search.addEventListener('input', () => { clearTimeout(els.search._t); els.search._t = setTimeout(render, 200); });
+[els.site, els.type, els.owner, els.latest].forEach(el => el.addEventListener('change', () => { page = 1; render(); }));
+els.search.addEventListener('input', () => { clearTimeout(els.search._t); els.search._t = setTimeout(() => { page = 1; render(); }, 200); });
 render();
 </script>
 </body>
