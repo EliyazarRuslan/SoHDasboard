@@ -74,6 +74,36 @@ body::before {
 }
 .filters input[type="search"] { min-width: 230px; }
 .filters select:focus, .filters input:focus { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.msel { position: relative; }
+.msel-btn {
+  background: var(--surface-1); color: var(--text-primary);
+  border: 1px solid var(--border-card); border-radius: 8px;
+  font: 400 13px 'Inter', sans-serif; padding: 8px 10px; min-width: 150px;
+  cursor: pointer; text-align: left; display: flex; justify-content: space-between; align-items: center; gap: 8px;
+}
+.msel-btn:focus-visible { outline: 2px solid var(--series-1); outline-offset: 1px; }
+.msel-caret { color: var(--text-muted); font-size: 10px; }
+.msel-panel {
+  position: absolute; top: calc(100% + 4px); left: 0; z-index: 50;
+  background: #0e1424; border: 1px solid var(--border-card); border-radius: 10px;
+  min-width: 210px; max-height: 280px; overflow: hidden; display: flex; flex-direction: column;
+  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
+}
+.msel-actions { display: flex; gap: 6px; padding: 8px; border-bottom: 1px solid var(--border-card); }
+.msel-actions button {
+  flex: 1; background: var(--surface-1); color: var(--text-secondary);
+  border: 1px solid var(--border-card); border-radius: 6px;
+  font: 600 11px 'Inter', sans-serif; padding: 5px 8px; cursor: pointer;
+}
+.msel-actions button:hover { color: var(--text-primary); border-color: var(--series-1); }
+.msel-list { overflow-y: auto; padding: 6px; }
+.msel-list label {
+  display: flex; flex-direction: row; align-items: center; gap: 8px;
+  font-size: 13px; font-weight: 400; color: var(--text-primary);
+  padding: 6px 8px; border-radius: 6px; cursor: pointer;
+}
+.msel-list label:hover { background: rgba(57,135,229,0.1); }
+.msel-list input { accent-color: var(--series-1); width: 14px; height: 14px; cursor: pointer; }
 .toggle { display: flex; align-items: center; gap: 8px; margin-top: 18px; font-size: 13px; color: var(--text-secondary); cursor: pointer; user-select: none; }
 .toggle input { accent-color: var(--series-1); width: 15px; height: 15px; cursor: pointer; }
 
@@ -98,7 +128,7 @@ body::before {
 .legend .sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: -1px; }
 
 .table-scroll { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border-card); }
-table { border-collapse: collapse; width: 100%; min-width: 1480px; font-size: 12.5px; }
+table { border-collapse: collapse; width: 100%; min-width: 1560px; font-size: 12.5px; }
 thead th {
   position: sticky; top: 0; background: #0e1424; color: var(--text-secondary);
   font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px;
@@ -146,7 +176,16 @@ td.desc { max-width: 300px; overflow: hidden; text-overflow: ellipsis; white-spa
       <select id="fOwner"><option value="">All owners</option></select>
     </label>
     <label>MG Code
-      <select id="fMg"><option value="">All MG codes</option></select>
+      <div class="msel" id="fMgWrap">
+        <button type="button" class="msel-btn" id="fMgBtn">All MG codes <span class="msel-caret">▾</span></button>
+        <div class="msel-panel" id="fMgPanel" hidden>
+          <div class="msel-actions">
+            <button type="button" id="fMgAll">Select all</button>
+            <button type="button" id="fMgNone">Clear</button>
+          </div>
+          <div class="msel-list" id="fMgList"></div>
+        </div>
+      </div>
     </label>
     <label>Search
       <input type="search" id="fSearch" placeholder="Vehicle no, owner, WO number…">
@@ -203,15 +242,17 @@ function enrich(r) {
     p8y:  degYr == null ? null : cap(100 - degYr * 8),
     p10y: degYr == null ? null : cap(100 - degYr * 10),
     p160: degKm == null ? null : cap(100 - degKm * 16),
-    p200: degKm == null ? null : cap(100 - degKm * 20)
+    p200: degKm == null ? null : cap(100 - degKm * 20),
+    p400: degKm == null ? null : cap(100 - degKm * 40)
   });
 }
 const DATA = RAW.map(enrich).filter(r => r.soh != null && r.soh >= 20 && r.soh <= 120);
+const esc = s => s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
 /* ---------- filter state ---------- */
 const els = {
   site: document.getElementById('fSite'), type: document.getElementById('fType'),
-  owner: document.getElementById('fOwner'), mg: document.getElementById('fMg'), search: document.getElementById('fSearch'),
+  owner: document.getElementById('fOwner'), search: document.getElementById('fSearch'),
   latest: document.getElementById('fLatest')
 };
 function fillSelect(sel, values) {
@@ -219,7 +260,43 @@ function fillSelect(sel, values) {
 }
 fillSelect(els.type, [...new Set(DATA.map(r => r.worktype).filter(Boolean))].sort());
 fillSelect(els.owner, [...new Set(DATA.map(r => r.owner).filter(Boolean))].sort());
-fillSelect(els.mg, [...new Set(DATA.map(r => r.mgcode).filter(Boolean))].sort());
+
+/* ---------- MG code multi-select ---------- */
+const MG_VALUES = [...new Set(DATA.map(r => r.mgcode).filter(Boolean))].sort();
+const mgSelected = new Set(); // empty = all
+const mgBtn = document.getElementById('fMgBtn');
+const mgPanel = document.getElementById('fMgPanel');
+const mgList = document.getElementById('fMgList');
+mgList.innerHTML = MG_VALUES.map(v =>
+  `<label><input type="checkbox" value="${esc(v)}"> ${esc(v)}</label>`).join('');
+function mgLabel() {
+  if (!mgSelected.size || mgSelected.size === MG_VALUES.length) return 'All MG codes';
+  if (mgSelected.size === 1) return [...mgSelected][0];
+  return mgSelected.size + ' MG codes';
+}
+function mgUpdate() {
+  mgBtn.firstChild.textContent = mgLabel() + ' ';
+  render();
+}
+mgBtn.addEventListener('click', () => { mgPanel.hidden = !mgPanel.hidden; });
+document.addEventListener('click', e => {
+  if (!document.getElementById('fMgWrap').contains(e.target)) mgPanel.hidden = true;
+});
+mgList.addEventListener('change', e => {
+  const cb = e.target;
+  if (cb.checked) mgSelected.add(cb.value); else mgSelected.delete(cb.value);
+  mgUpdate();
+});
+document.getElementById('fMgAll').addEventListener('click', () => {
+  MG_VALUES.forEach(v => mgSelected.add(v));
+  mgList.querySelectorAll('input').forEach(cb => cb.checked = true);
+  mgUpdate();
+});
+document.getElementById('fMgNone').addEventListener('click', () => {
+  mgSelected.clear();
+  mgList.querySelectorAll('input').forEach(cb => cb.checked = false);
+  mgUpdate();
+});
 
 let sortKey = 'dateObj', sortDir = -1;
 
@@ -229,7 +306,7 @@ function currentRows() {
     (!els.site.value || r.site === els.site.value) &&
     (!els.type.value || r.worktype === els.type.value) &&
     (!els.owner.value || r.owner === els.owner.value) &&
-    (!els.mg.value || r.mgcode === els.mg.value) &&
+    (!mgSelected.size || mgSelected.has(r.mgcode)) &&
     (!q || [r.vehicle, r.owner, r.wonum, r.assetnum, r.model, r.mgcode].some(v => v && String(v).toUpperCase().includes(q)))
   );
   if (els.latest.checked) rows = latestPerVehicle(rows);
@@ -244,7 +321,6 @@ function currentRows() {
 }
 
 /* ---------- formatting ---------- */
-const esc = s => s == null ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const latestPerVehicle = rows => {
   const best = new Map();
   rows.forEach(r => {
@@ -282,7 +358,7 @@ const COLS = [
   ['site', 'Site'], ['vehicle', 'Vehicle No'], ['mgcode', 'MG Code'], ['owner', 'Owner'], ['regObj', 'Reg. Date'],
   ['description', 'Service'], ['worktype', 'Type'], ['km', 'Mileage (km)'], ['dateObj', 'Date'],
   ['soh', 'SoH (%)'], ['degKm', 'Deg /10k km'], ['degYr', 'Deg /yr'],
-  ['p8y', 'Pred @ 8 yr'], ['p160', 'Pred @ 160k'], ['p10y', 'Pred @ 10 yr'], ['p200', 'Pred @ 200k'],
+  ['p8y', 'Pred @ 8 yr'], ['p160', 'Pred @ 160k'], ['p10y', 'Pred @ 10 yr'], ['p200', 'Pred @ 200k'], ['p400', 'Pred @ 400k'],
   ['wonum', 'WO No']
 ];
 function renderHead() {
@@ -314,6 +390,7 @@ function renderTable(rows) {
     <td class="${sohClass(r.p160)}">${fmtNum(r.p160, 1)}</td>
     <td class="${sohClass(r.p10y)}">${fmtNum(r.p10y, 1)}</td>
     <td class="${sohClass(r.p200)}">${fmtNum(r.p200, 1)}</td>
+    <td class="${sohClass(r.p400)}">${fmtNum(r.p400, 1)}</td>
     <td class="dim">${esc(r.wonum)}</td>
   </tr>`).join('');
 }
@@ -388,6 +465,7 @@ document.getElementById('btnExport').onclick = () => {
     'Predicted SoH @ 160,000km (Warranty End)': r.p160 == null ? '' : +r.p160.toFixed(1),
     'Predicted SoH @ 10 Years (Ext. Warranty End)': r.p10y == null ? '' : +r.p10y.toFixed(1),
     'Predicted SoH @ 200,000km (Ext. Warranty End)': r.p200 == null ? '' : +r.p200.toFixed(1),
+    'Predicted SoH @ 400,000km': r.p400 == null ? '' : +r.p400.toFixed(1),
     'WO Number': r.wonum, 'Status': r.status || '', 'Vehicle Model': r.model || ''
   }));
   const ws = XLSX.utils.json_to_sheet(sheet);
@@ -408,7 +486,7 @@ function render() {
 if (window.SOH_GENERATED) {
   document.getElementById('dataAsOf').textContent = ' · data as of ' + new Date(window.SOH_GENERATED).toLocaleString('en-SG', { dateStyle: 'medium', timeStyle: 'short' });
 }
-[els.site, els.type, els.owner, els.mg, els.latest].forEach(el => el.addEventListener('change', render));
+[els.site, els.type, els.owner, els.latest].forEach(el => el.addEventListener('change', render));
 els.search.addEventListener('input', () => { clearTimeout(els.search._t); els.search._t = setTimeout(render, 200); });
 render();
 </script>
